@@ -9,3 +9,8 @@ tokio = { version = "1.54.1", features = ["full"] }
 
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }
+
+[lints.clippy]
+cognitive_complexity = "deny"
+too_many_arguments = "deny"
+wildcard_imports = "deny"
