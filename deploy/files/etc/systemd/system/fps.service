@@ -14,14 +14,19 @@ ExecStartPre=-/usr/bin/docker network create fps
 ExecStartPre=-/usr/bin/docker rm -f fps
 # Pull only when the image is missing, so a registry outage can't keep the service down after a reboot.
 ExecStartPre=/bin/sh -c 'docker image inspect ${FPS_IMAGE} >/dev/null 2>&1 || docker pull ${FPS_IMAGE}'
-ExecStart=/usr/bin/docker run --rm --name fps --network fps \
+# Clients reach the origin only through Cloudflare, which sets CF-Connecting-IP; the rate
+# limit keys on it. FACE_CACHE bounds the parsed-font cache for the container's memory limit.
+ExecStart=/usr/bin/docker run --rm --init --name fps --network fps \
   --user 65532:65532 --read-only --tmpfs /tmp:size=64m \
   --cap-drop ALL --security-opt no-new-privileges \
   --memory 1200m --memory-swap 1200m --cpus 1 --pids-limit 256 \
   --log-driver journald --log-opt tag=fps \
+  -v /var/lib/font-preview/fonts:/fonts:ro -e FONTS_DIR=/fonts \
   -e PORT=8000 \
+  -e CLIENT_IP_HEADER=CF-Connecting-IP -e FACE_CACHE=100 \
   ${FPS_IMAGE}
-ExecStop=/usr/bin/docker stop -t 10 fps
+# Longer than the server's 10 s drain, so a full drain ends before SIGKILL.
+ExecStop=/usr/bin/docker stop -t 15 fps
 
 [Install]
 WantedBy=multi-user.target

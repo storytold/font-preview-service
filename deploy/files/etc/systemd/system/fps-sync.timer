@@ -1,0 +1,11 @@
+[Unit]
+Description=Font preview service: sync the fonts volume daily and after boot
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+OnBootSec=3min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

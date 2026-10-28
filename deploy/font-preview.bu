@@ -12,6 +12,10 @@ storage:
       mode: 0750
       user: {id: 1000}
       group: {id: 1000}
+    - path: /var/lib/font-preview/fonts
+      mode: 0755
+      user: {id: 65532}
+      group: {id: 65532}
   files:
     - path: /etc/systemd/system/fps.service
       contents: {local: etc/systemd/system/fps.service}
@@ -34,6 +38,12 @@ storage:
       contents: {local: etc/systemd/system/fps-cloudflare.service}
     - path: /etc/systemd/system/fps-cloudflare.timer
       contents: {local: etc/systemd/system/fps-cloudflare.timer}
+    - path: /etc/systemd/system/fps-sync.service
+      contents: {local: etc/systemd/system/fps-sync.service}
+    - path: /etc/systemd/system/fps-sync.timer
+      contents: {local: etc/systemd/system/fps-sync.timer}
+    - path: /etc/font-preview/sync.env
+      contents: {local: etc/font-preview/sync.env}
     - path: /etc/font-preview/site.env
       contents: {local: etc/font-preview/site.env}
     - path: /etc/font-preview/release.env
@@ -56,4 +66,6 @@ systemd:
     - name: fps-proxy.service
       enabled: true
     - name: fps-cloudflare.timer
+      enabled: true
+    - name: fps-sync.timer
       enabled: true

@@ -1,0 +1,35 @@
+[Unit]
+Description=Font preview service: sync the fonts volume from the pinned index
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Memory limit of the sync container; sync.env may override it.
+Environment=SYNC_CONTAINER_MEMORY=640m
+EnvironmentFile=/etc/font-preview/release.env
+EnvironmentFile=/etc/font-preview/sync.env
+TimeoutStartSec=2h
+# Nothing to sync until an index is pinned (deploy.sh index); the unit then ends as skipped.
+ExecCondition=/usr/bin/grep -q ^INDEX_COMMIT= /etc/font-preview/sync.env
+ExecStartPre=-/usr/bin/docker rm -f fps-sync
+ExecStartPre=/bin/sh -c 'docker image inspect ${FPS_IMAGE} >/dev/null 2>&1 || docker pull ${FPS_IMAGE}'
+# Default bridge network: outbound HTTPS only, and no access to the service on the fps network.
+# --init: the sync would be PID 1 without signal handlers, so a stop could not end it. The shell
+# applies the memory default when sync.env sets SYNC_CONTAINER_MEMORY empty (a bare --memory
+# would take the next flag as its value). The high OOM score makes the kernel kill the sync
+# before the server or the proxy.
+ExecStart=/bin/sh -c 'exec /usr/bin/docker run --rm --init --name fps-sync \
+  --user 65532:65532 --read-only --tmpfs /tmp:size=256m \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --memory "$${SYNC_CONTAINER_MEMORY:-640m}" --memory-swap "$${SYNC_CONTAINER_MEMORY:-640m}" \
+  --oom-score-adj 500 --cpus 1 --pids-limit 256 \
+  --log-driver journald --log-opt tag=fps-sync \
+  --env-file /etc/font-preview/sync.env \
+  -e FONTS_DIR=/fonts \
+  -v /var/lib/font-preview/fonts:/fonts \
+  ${FPS_IMAGE} sync'
+# The server polls `current` every 30 s anyway; HUP makes it reload at once. Ignored when it is down.
+ExecStartPost=-/usr/bin/docker kill --signal=HUP fps
+ExecStop=-/usr/bin/docker stop -t 30 fps-sync
