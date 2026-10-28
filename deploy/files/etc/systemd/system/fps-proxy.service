@@ -1,0 +1,33 @@
+[Unit]
+Description=Font preview service: TLS proxy (Caddy)
+After=docker.service network-online.target fps.service
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/font-preview/release.env
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+ExecStartPre=-/usr/bin/docker network create fps
+ExecStartPre=-/usr/bin/docker rm -f fps-proxy
+ExecStartPre=/bin/sh -c 'docker image inspect ${CADDY_IMAGE} >/dev/null 2>&1 || docker pull ${CADDY_IMAGE}'
+# Caddy listens on 8080/8443 inside the container so it runs as a normal user; the host's
+# 80/443 are published onto them. The image's caddy binary carries the NET_BIND_SERVICE file
+# capability, and exec fails unless that capability is left in the bounding set.
+ExecStart=/usr/bin/docker run --rm --name fps-proxy --network fps \
+  --user 1000:1000 --read-only --tmpfs /tmp:size=16m \
+  --cap-drop ALL --cap-add NET_BIND_SERVICE --security-opt no-new-privileges \
+  --memory 200m --memory-swap 200m --cpus 0.5 --pids-limit 128 \
+  -p 0.0.0.0:80:8080 -p 0.0.0.0:443:8443 \
+  -v /var/lib/font-preview/caddy/data:/data \
+  -v /var/lib/font-preview/caddy/config:/config \
+  -v /etc/font-preview/Caddyfile:/etc/caddy/Caddyfile:ro \
+  -v /etc/font-preview/cloudflare-origin-pull-ca.pem:/etc/caddy/cloudflare-origin-pull-ca.pem:ro \
+  --env-file /etc/font-preview/site.env \
+  --log-driver journald --log-opt tag=fps-proxy \
+  ${CADDY_IMAGE}
+ExecStop=/usr/bin/docker stop -t 10 fps-proxy
+
+[Install]
+WantedBy=multi-user.target

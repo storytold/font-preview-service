@@ -1,0 +1,27 @@
+[Unit]
+Description=Font preview service
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/font-preview/release.env
+Restart=always
+RestartSec=5
+# The first pull of an image can take minutes.
+TimeoutStartSec=0
+ExecStartPre=-/usr/bin/docker network create fps
+ExecStartPre=-/usr/bin/docker rm -f fps
+# Pull only when the image is missing, so a registry outage can't keep the service down after a reboot.
+ExecStartPre=/bin/sh -c 'docker image inspect ${FPS_IMAGE} >/dev/null 2>&1 || docker pull ${FPS_IMAGE}'
+ExecStart=/usr/bin/docker run --rm --name fps --network fps \
+  --user 65532:65532 --read-only --tmpfs /tmp:size=64m \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --memory 1200m --memory-swap 1200m --cpus 1 --pids-limit 256 \
+  --log-driver journald --log-opt tag=fps \
+  -e PORT=8000 \
+  ${FPS_IMAGE}
+ExecStop=/usr/bin/docker stop -t 10 fps
+
+[Install]
+WantedBy=multi-user.target

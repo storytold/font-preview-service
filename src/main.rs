@@ -15,8 +15,25 @@ fn port_from_env(value: Option<&str>) -> u16 {
     value.and_then(|p| p.parse().ok()).unwrap_or(8000)
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    match std::env::args().nth(1).as_deref() {
+        None => serve(),
+        Some("sync") => std::process::exit(font_preview_service::sync::main()),
+        Some(other) => {
+            eprintln!("unknown command `{other}`; use `sync` or no argument to run the server");
+            std::process::exit(2);
+        }
+    }
+}
+
+/// The sync is blocking, so the runtime exists only for the server.
+fn serve() {
+    tokio::runtime::Runtime::new()
+        .expect("failed to start the runtime")
+        .block_on(serve_async());
+}
+
+async fn serve_async() {
     let port = port_from_env(std::env::var("PORT").ok().as_deref());
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = tokio::net::TcpListener::bind(addr)

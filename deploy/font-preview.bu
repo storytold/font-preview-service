@@ -1,0 +1,59 @@
+# Butane config for a new Flatcar host. deploy.sh ignition renders the files it names into a
+# directory first (static files plus the generated env and firewall files), then runs Butane on it.
+variant: flatcar
+version: 1.1.0
+storage:
+  directories:
+    - path: /var/lib/font-preview/caddy/data
+      mode: 0750
+      user: {id: 1000}
+      group: {id: 1000}
+    - path: /var/lib/font-preview/caddy/config
+      mode: 0750
+      user: {id: 1000}
+      group: {id: 1000}
+  files:
+    - path: /etc/systemd/system/fps.service
+      contents: {local: etc/systemd/system/fps.service}
+    - path: /etc/systemd/system/fps-proxy.service
+      contents: {local: etc/systemd/system/fps-proxy.service}
+    - path: /etc/systemd/journald.conf.d/font-preview.conf
+      contents: {local: etc/systemd/journald.conf.d/font-preview.conf}
+    - path: /etc/font-preview/Caddyfile
+      contents: {local: etc/font-preview/Caddyfile}
+    - path: /etc/font-preview/cloudflare-origin-pull-ca.pem
+      contents: {local: etc/font-preview/cloudflare-origin-pull-ca.pem}
+    - path: /etc/font-preview/cloudflare.sh
+      mode: 0755
+      contents: {local: etc/font-preview/cloudflare.sh}
+    - path: /etc/font-preview/cloudflare-v4.txt
+      contents: {local: etc/font-preview/cloudflare-v4.txt}
+    - path: /etc/font-preview/cloudflare-v6.txt
+      contents: {local: etc/font-preview/cloudflare-v6.txt}
+    - path: /etc/systemd/system/fps-cloudflare.service
+      contents: {local: etc/systemd/system/fps-cloudflare.service}
+    - path: /etc/systemd/system/fps-cloudflare.timer
+      contents: {local: etc/systemd/system/fps-cloudflare.timer}
+    - path: /etc/font-preview/site.env
+      contents: {local: etc/font-preview/site.env}
+    - path: /etc/font-preview/release.env
+      contents: {local: etc/font-preview/release.env}
+    - path: /var/lib/iptables/rules-save
+      contents: {local: var/lib/iptables/rules-save}
+    - path: /var/lib/ip6tables/rules-save
+      contents: {local: var/lib/ip6tables/rules-save}
+    - path: /etc/flatcar/update.conf
+      overwrite: true
+      contents: {local: etc/flatcar/update.conf}
+systemd:
+  units:
+    - name: iptables-restore.service
+      enabled: true
+    - name: ip6tables-restore.service
+      enabled: true
+    - name: fps.service
+      enabled: true
+    - name: fps-proxy.service
+      enabled: true
+    - name: fps-cloudflare.timer
+      enabled: true

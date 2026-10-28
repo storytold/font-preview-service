@@ -1,0 +1,31 @@
+{
+	http_port 8080
+	https_port 8443
+	admin off
+	servers {
+		# Only TCP 80/443 are published, so no HTTP/3.
+		protocols h1 h2
+		trusted_proxies static {$FPS_TRUSTED_PROXIES}
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+# Cloudflare reaches the origin over HTTPS only (SSL mode "Full (strict)"). Port 80 answers
+# ACME challenges and redirects everything else.
+{$FPS_DOMAIN} {
+	tls {
+		# Authenticated Origin Pulls: Cloudflare presents its origin-pull client certificate.
+		# FPS_CLIENT_AUTH is verify_if_given until the zone has origin pulls turned on, then
+		# require_and_verify, so other Cloudflare accounts can't proxy to this host.
+		client_auth {
+			mode {$FPS_CLIENT_AUTH}
+			trust_pool file /etc/caddy/cloudflare-origin-pull-ca.pem
+		}
+	}
+	header -Server
+	reverse_proxy fps:8000
+	log {
+		output stdout
+		format json
+	}
+}

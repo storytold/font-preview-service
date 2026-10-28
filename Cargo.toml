@@ -3,12 +3,29 @@ name = "font-preview-service"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = ["crates/harfbuzz-subset-sys"]
+
 [dependencies]
 axum = "0.8.9"
+craft-font-store = { git = "https://github.com/storytold/craft-libs", rev = "9ff719499d8f4730b93071abed993e5f12fe1be8" }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+harfbuzz-subset-sys = { path = "crates/harfbuzz-subset-sys" }
+rustybuzz = "0.20.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+skrifa = "0.49.0"
+thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["full"] }
+brotli = { version = "9.1", default-features = false, features = ["std"] }
+unicode-normalization = "0.1.26"
+write-fonts = { version = "0.55.0", features = ["read"] }
 
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }
+tempfile = "3"
+ureq = { version = "3", default-features = false }
+wuff = "0.2.9"
 
 [lints.clippy]
 cognitive_complexity = "deny"

@@ -1,18 +1,24 @@
 # syntax=docker/dockerfile:1
 
+# The build stage compiles HarfBuzz (C++), so its image needs g++. The binary links only
+# glibc and libgcc_s; the runtime image must have a glibc at least as new as the build image's.
+ARG BUILD_IMAGE=rust:1-bookworm
+ARG RUNTIME_IMAGE=dhi.io/rust:1
+
 ################################################################################
-# Build stage: Docker Hardened Rust dev image (toolchain + cargo).
-FROM dhi.io/rust:1-dev AS build
+# Build stage: Rust toolchain with g++.
+FROM ${BUILD_IMAGE} AS build
 WORKDIR /build
 
 COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
 COPY src ./src
 RUN cargo build --locked --release && \
     cp target/release/font-preview-service /build/font-preview-service
 
 ################################################################################
-# Runtime stage: Docker Hardened Rust runtime image, runs as nonroot.
-FROM dhi.io/rust:1 AS final
+# Runtime stage: Docker Hardened Rust runtime image by default, runs as nonroot.
+FROM ${RUNTIME_IMAGE} AS final
 WORKDIR /app
 COPY --from=build /build/font-preview-service /app/font-preview-service
 

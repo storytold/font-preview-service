@@ -1,0 +1,8 @@
+[Unit]
+Description=Font preview service: refresh Cloudflare's address ranges
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /etc/font-preview/cloudflare.sh refresh

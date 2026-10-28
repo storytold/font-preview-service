@@ -1,0 +1,10 @@
+[package]
+name = "harfbuzz-subset-sys"
+version = "0.1.0"
+edition = "2024"
+description = "Raw bindings to the HarfBuzz subsetter, built from vendored source"
+publish = false
+links = "harfbuzz-subset"
+
+[build-dependencies]
+cc = "1"
