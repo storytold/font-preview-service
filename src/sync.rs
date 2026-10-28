@@ -2,6 +2,7 @@
 //! content-addressed store, then builds a generation (manifest and static subsets) and switches
 //! `current` to it.
 
+use crate::faces::{self, FACES};
 use crate::index12;
 use crate::precompute::{self, Face};
 use crate::store::{Kind, MANIFEST, Store};
@@ -9,7 +10,7 @@ use craft_font_store::{
     Cancel, Client, FontFile, Index, IndexPin, SourceEntry, SourcesFile, sha256_hex, verify_font,
 };
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -197,6 +198,8 @@ pub struct SourceReport {
     pub families: usize,
     pub files: usize,
     pub licences: usize,
+    /// Notice files (`notice_file`, index 1.2), mirrored beside the licences.
+    pub notices: usize,
     /// Families with a licence path but no hashed `license_file`; their licence is not mirrored.
     pub licences_unhashed: usize,
 }
@@ -315,9 +318,11 @@ struct Job {
 
 /// Adds one job per distinct blob of the index; `seen` spans all sources so shared blobs are fetched
 /// once. A blob already seen from another source gains this source's URLs as extra mirrors.
+/// `view` is the same index read for its 1.2 fields, for the notice files.
 fn collect_jobs(
     source: &str,
     index: &Index,
+    view: &index12::Index,
     seen: &mut HashMap<(Kind, String), usize>,
     jobs: &mut Vec<Job>,
 ) -> SourceReport {
@@ -325,6 +330,11 @@ fn collect_jobs(
         source: source.to_string(),
         ..SourceReport::default()
     };
+    let notices: HashMap<&str, &craft_font_store::LicenseFile> = view
+        .families
+        .iter()
+        .filter_map(|f| Some((f.family.as_str(), f.notice_file.as_ref()?)))
+        .collect();
     let mut add = |job: Job| match seen.get(&(job.kind, job.sha256.clone())) {
         Some(&i) => {
             for url in job.urls {
@@ -365,6 +375,22 @@ fn collect_jobs(
             });
         } else if family.license_path.is_some() {
             report.licences_unhashed += 1;
+        }
+        if let Some(notice) = notices.get(family.family.as_str()) {
+            report.notices += 1;
+            // The licence URL builder resolves a file's repository and ref the same way for any
+            // file of the family.
+            let mut as_licence = family.clone();
+            as_licence.license_file = Some((*notice).clone());
+            add(Job {
+                family: family.family.clone(),
+                label: notice.path.clone(),
+                kind: Kind::Licence,
+                sha256: notice.sha256.clone(),
+                size: notice.size,
+                urls: index.license_urls(&as_licence),
+                font: None,
+            });
         }
     }
     report
@@ -483,7 +509,7 @@ pub fn run(
     for entry in &sources.indexes {
         match read_index(entry, &pin, fetch) {
             Ok((index, view)) => {
-                let report = collect_jobs(&entry.source, &index, &mut seen, &mut jobs);
+                let report = collect_jobs(&entry.source, &index, &view, &mut seen, &mut jobs);
                 precompute::collect_faces(&view, &mut seen_faces, &mut faces);
                 log(&format!(
                     "{}: {} families, {} files",
@@ -502,6 +528,11 @@ pub fn run(
         }
     }
     let (totals, file_failures) = run_jobs(&jobs, &store, fetch, log);
+    let licences: BTreeSet<String> = jobs
+        .iter()
+        .filter(|j| j.kind == Kind::Licence)
+        .map(|j| j.sha256.clone())
+        .collect();
     failures.extend(file_failures);
     let totals = Totals {
         failed: failures.len(),
@@ -524,7 +555,7 @@ pub fn run(
         manifest.totals.fetched, manifest.totals.skipped, manifest.totals.failed
     ));
     if !manifest.failures.is_empty() {
-        write_manifest(&store.failed_manifest_path(), &manifest)?;
+        write_json(&store.failed_manifest_path(), &manifest, true)?;
         log("fetch failures: no new generation; `current` is unchanged");
     } else if !cfg.tuning.force
         && let Some(name) = unchanged_generation(&store, &manifest)
@@ -534,19 +565,19 @@ pub fn run(
         manifest.unchanged = true;
         store.remove_failed_manifest();
     } else {
-        build_generation(&store, &faces, &mut manifest, &cfg.tuning, log)?;
+        build_generation(&store, &faces, &licences, &mut manifest, &cfg.tuning, log)?;
     }
     Ok(manifest)
 }
 
-/// The generation `current` points to, when it exists, holds this index commit and sources, and
-/// this run fetched nothing new.
+/// The generation `current` points to, when it exists, holds this index commit and sources and a
+/// `faces.json`, and this run fetched nothing new.
 fn unchanged_generation(store: &Store, manifest: &Manifest) -> Option<String> {
     if manifest.totals.fetched != 0 {
         return None;
     }
     let name = store.current_generation()?;
-    if !store.generation_dir(&name).is_dir() {
+    if !store.generation_dir(&name).join(FACES).is_file() {
         return None;
     }
     let bytes = std::fs::read(store.current_manifest_path()).ok()?;
@@ -591,12 +622,13 @@ fn too_many_failures(report: &precompute::Report, max_percent: f64) -> Option<St
     })
 }
 
-/// Precomputes the static subsets into a new generation, writes its manifest last, syncs it to
-/// disk, switches `current` to it and removes old generations. With too many failed faces, it
-/// removes the new generation instead and reports in `manifest.failed.json`.
+/// Precomputes the static subsets into a new generation, writes `faces.json` and then its manifest,
+/// syncs it to disk, switches `current` to it and removes old generations. With too many failed
+/// faces, it removes the new generation instead and reports in `manifest.failed.json`.
 fn build_generation(
     store: &Store,
     faces: &[Face],
+    licences: &BTreeSet<String>,
     manifest: &mut Manifest,
     tuning: &Tuning,
     log: &(dyn Fn(&str) + Sync),
@@ -614,10 +646,15 @@ fn build_generation(
             log(&format!("WARNING removing {}: {e}", dir.display()));
         }
         manifest.refused_switch = Some(reason);
-        return write_manifest(&store.failed_manifest_path(), manifest);
+        return write_json(&store.failed_manifest_path(), manifest, true);
     }
     manifest.generation = Some(name.clone());
-    write_manifest(&dir.join(MANIFEST), manifest)?;
+    write_json(
+        &dir.join(FACES),
+        &faces::build(faces, licences, &dir),
+        false,
+    )?;
+    write_json(&dir.join(MANIFEST), manifest, true)?;
     store
         .sync_tree(&dir)
         .map_err(|e| format!("syncing {}: {e}", dir.display()))?;
@@ -654,9 +691,14 @@ fn lock(store: &Store) -> Result<std::fs::File, String> {
     }
 }
 
-/// Writes `manifest` to `path` through a synced temporary file.
-fn write_manifest(path: &Path, manifest: &Manifest) -> Result<(), String> {
-    let json = serde_json::to_vec_pretty(manifest).map_err(|e| e.to_string())?;
+/// Writes `value` to `path` through a synced temporary file.
+fn write_json(path: &Path, value: &impl Serialize, pretty: bool) -> Result<(), String> {
+    let json = if pretty {
+        serde_json::to_vec_pretty(value)
+    } else {
+        serde_json::to_vec(value)
+    }
+    .map_err(|e| e.to_string())?;
     let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     let write = || -> std::io::Result<()> {
         let mut f = std::fs::File::create(&tmp)?;

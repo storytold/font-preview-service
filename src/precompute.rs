@@ -30,6 +30,10 @@ pub struct Face {
     /// The instance the font list shows, from the index's `list_instance`.
     pub list: Instance,
     pub variable: bool,
+    /// Axis tags, from the index.
+    pub axes: Vec<String>,
+    /// Named instances, from the index.
+    pub instances: Vec<index12::NamedInstance>,
     /// Bytes of the font file, which weigh the face against the memory budget.
     pub size: u64,
     /// Index data precompute could not use.
@@ -53,6 +57,8 @@ pub fn collect_faces(index: &index12::Index, seen: &mut HashSet<String>, faces: 
                 sample_text: index.sample_text(family, file).map(str::to_owned),
                 list: list_instance(file, &mut warnings),
                 variable: !file.axes.is_empty(),
+                axes: file.axes.iter().map(|a| a.tag.clone()).collect(),
+                instances: file.instances.clone(),
                 size: file.size,
                 warnings,
             });
@@ -276,10 +282,24 @@ fn record(report: &mut Report, face: &Face, (outcome, notes): (Outcome, Vec<Stri
         }));
 }
 
-fn licence(face: &Face) -> Result<Licence, String> {
-    match face.license.as_str() {
+/// How subsets of a face are renamed, from its index data.
+pub fn naming(
+    family: &str,
+    license: &str,
+    reserved_names: &[String],
+    sha256: &str,
+) -> Result<Naming, String> {
+    Ok(Naming {
+        licence: licence(license, reserved_names)?,
+        family_name: family.to_owned(),
+        sha256: sha256_bytes(sha256)?,
+    })
+}
+
+fn licence(license: &str, reserved_names: &[String]) -> Result<Licence, String> {
+    match license {
         "OFL" => Ok(Licence::Ofl {
-            reserved_names: face.reserved_names.clone(),
+            reserved_names: reserved_names.to_vec(),
         }),
         "UFL" => Ok(Licence::Ufl),
         "APACHE2" => Ok(Licence::Apache),
@@ -308,11 +328,12 @@ fn precompute_face(face: &Face, store: &Store, generation: &Path) -> (Outcome, V
     #[cfg(test)]
     assert_ne!(face.family, PANIC_FAMILY, "test hook");
     let setup = || -> Result<(Vec<u8>, Naming), String> {
-        let naming = Naming {
-            licence: licence(face)?,
-            family_name: face.family.clone(),
-            sha256: sha256_bytes(&face.sha256)?,
-        };
+        let naming = naming(
+            &face.family,
+            &face.license,
+            &face.reserved_names,
+            &face.sha256,
+        )?;
         let path = store.path(Kind::File, &face.sha256);
         let font = std::fs::read(&path).map_err(|e| format!("reading {}: {e}", path.display()))?;
         Ok((font, naming))
@@ -375,7 +396,8 @@ fn advance_tolerance(variable: bool, instance: &Instance, glyphs: usize) -> i64 
     }
 }
 
-fn ascii() -> String {
+/// The text of an `ascii` subset: printable ASCII.
+pub fn ascii() -> String {
     (0x20u8..=0x7e).map(char::from).collect()
 }
 
@@ -684,6 +706,8 @@ mod tests {
             sample_text: Some("Whereas".into()),
             list: Instance::List,
             variable: false,
+            axes: Vec::new(),
+            instances: Vec::new(),
             size: font.len() as u64,
             warnings: Vec::new(),
         };

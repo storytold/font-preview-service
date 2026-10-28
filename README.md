@@ -26,6 +26,8 @@ Tags:
 | --- | --- | --- |
 | `PORT` | `8000` | TCP port the server binds on all interfaces. Keep it above 1024 for the nonroot runtime. |
 | `FONTS_DIR` | `/opt/fonts` (image) | Location of the font sets inside the image. Set by the Dockerfile; the app does not read it yet. |
+| `FILES_CONCURRENCY` | `64` | File downloads (`/v1/files/...`) sent at once. Bounds the memory that downloads hold. |
+| `FILES_QUEUE` | 16 × `FILES_CONCURRENCY` | Downloads that may wait up to 2 s for a slot; beyond that the server answers 503 with `Retry-After`. |
 
 ## Running
 

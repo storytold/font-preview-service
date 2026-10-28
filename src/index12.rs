@@ -3,7 +3,7 @@
 //! craft-font-store at the pinned rev reads format 1.1 only. This view gives way to its types
 //! once it reads 1.2. Every field defaults, so a 1.1 index reads as one without samples.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Default, Deserialize)]
@@ -35,6 +35,10 @@ pub struct Family {
     pub reserved_names: Vec<String>,
     #[serde(default)]
     pub sample_script: Option<String>,
+    /// A notice file the licence requires beside it (Apache 2.0 `NOTICE`), mirrored like the
+    /// licence.
+    #[serde(default)]
+    pub notice_file: Option<craft_font_store::LicenseFile>,
     #[serde(default)]
     pub files: Vec<File>,
 }
@@ -59,7 +63,7 @@ pub struct File {
     pub axes: Vec<Axis>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 pub struct NamedInstance {
     #[serde(default)]
     pub name: String,
