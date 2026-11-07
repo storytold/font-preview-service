@@ -8,13 +8,15 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: dylanmtaylorartcraft/font-preview-service
+  DOCR_REPOSITORY: registry.digitalocean.com/artcraft/font-preview-service
+  GHCR_REPOSITORY: ghcr.io/storytold/font-preview-service
 
 jobs:
   build:
@@ -66,11 +68,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Log in to Docker Hub (publish)
+      - name: Log in to the DigitalOcean Container Registry
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: registry.digitalocean.com
+          username: ${{ secrets.DIGITALOCEAN_TOKEN }}
+          password: ${{ secrets.DIGITALOCEAN_TOKEN }}
+
+      - name: Log in to GHCR (mirror)
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -81,7 +91,9 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          # Push each platform's image to both registries by digest; the merge
+          # job joins the digests into one multi-arch manifest per registry.
+          outputs: type=image,name=${{ env.DOCR_REPOSITORY }},name=${{ env.GHCR_REPOSITORY }},push-by-digest=true,name-canonical=true,push=true
           provenance: false
 
       - name: Export digest
@@ -110,11 +122,19 @@ jobs:
           pattern: digests-*
           merge-multiple: true
 
-      - name: Log in to Docker Hub
+      - name: Log in to the DigitalOcean Container Registry
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: registry.digitalocean.com
+          username: ${{ secrets.DIGITALOCEAN_TOKEN }}
+          password: ${{ secrets.DIGITALOCEAN_TOKEN }}
+
+      - name: Log in to GHCR (mirror)
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -123,23 +143,32 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.DOCR_REPOSITORY }}
+            ${{ env.GHCR_REPOSITORY }}
           tags: |
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      - name: Create manifest list and push
+      - name: Create manifest lists and push
         working-directory: ${{ runner.temp }}/digests
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          tag_args=()
-          while IFS= read -r tag; do
-            [ -n "$tag" ] && tag_args+=(--tag "$tag")
-          done <<< "$TAGS"
-          refs=()
-          for digest in *; do
-            refs+=("${IMAGE_NAME}@sha256:${digest}")
+          set -euo pipefail
+          # metadata-action emits "<repo>:<tag>" for every image, so each
+          # registry only receives the tags that belong to it.
+          for repo in "$DOCR_REPOSITORY" "$GHCR_REPOSITORY"; do
+            tag_args=()
+            while IFS= read -r tag; do
+              case "$tag" in
+                "$repo":*) tag_args+=(--tag "$tag") ;;
+              esac
+            done <<< "$TAGS"
+            refs=()
+            for digest in *; do
+              refs+=("${repo}@sha256:${digest}")
+            done
+            docker buildx imagetools create "${tag_args[@]}" "${refs[@]}"
           done
-          docker buildx imagetools create "${tag_args[@]}" "${refs[@]}"

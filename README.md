@@ -6,7 +6,9 @@ A small Rust web service that will render font previews. It currently exposes a 
 
 ## Image
 
-Published to Docker Hub as `dylanmtaylorartcraft/font-preview-service`.
+Published to the DigitalOcean Container Registry as
+`registry.digitalocean.com/artcraft/font-preview-service`, with a mirror at
+`ghcr.io/storytold/font-preview-service`.
 
 - Built for `linux/amd64` and `linux/arm64`, each on a native Ubuntu 26.04 runner, then merged into one multi-arch manifest.
 - Builds on the [Docker Hardened Images](https://docs.docker.com/dhi/) Rust images (`dhi.io/rust`). The runtime stage runs as a nonroot user.
@@ -32,7 +34,7 @@ Tags:
 ## Running
 
 ```sh
-docker run --rm -p 8000:8000 dylanmtaylorartcraft/font-preview-service:latest
+docker run --rm -p 8000:8000 registry.digitalocean.com/artcraft/font-preview-service:latest
 curl http://localhost:8000/healthz   # ok
 ```
 
@@ -71,10 +73,13 @@ To change a pin, edit the `*_SHA` variables in the "Fetch font sources (pinned)"
 
 | Workflow | Runs on | Does |
 | --- | --- | --- |
-| `docker-publish.yml` | push to `main`, `v*` tags, manual | Fetches fonts, builds both architectures, pushes the multi-arch image. |
+| `docker-publish.yml` | push to `main`, `v*` tags, manual | Fetches fonts, builds both architectures, pushes the multi-arch image to DOCR and GHCR. |
 | `sonar.yml` | push to `main`, same-repo pull requests | Runs the shared SonarCloud scan from [`storytold/craft-common-actions`](https://github.com/storytold/craft-common-actions). |
 
-Required repository secrets: `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`.
+Required repository secrets: `DIGITALOCEAN_TOKEN` (write access to the `artcraft`
+registry), `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (read-only, for pulling the
+Docker Hardened base images from `dhi.io` — these no longer publish anything),
+`SONAR_TOKEN`, plus the built-in `GITHUB_TOKEN` for the GHCR mirror.
 
 ## Not yet implemented
 
