@@ -9,9 +9,8 @@ built on demand for an arbitrary list of codepoints.
 
 ## Image
 
-Published to the DigitalOcean Container Registry as
-`registry.digitalocean.com/artcraft/font-preview-service`, with a mirror at
-`ghcr.io/storytold/font-preview-service`.
+Published to GitHub Packages as `ghcr.io/storytold/font-preview-service`, with a mirror at
+`docker.io/storytold/font-preview-service`.
 
 - Built for `linux/amd64` and `linux/arm64`, each on a native Ubuntu 26.04 runner, then merged into one multi-arch manifest.
 - Builds on the [Docker Hardened Images](https://docs.docker.com/dhi/) Rust images (`dhi.io/rust`). The runtime stage runs as a nonroot user (uid 65532).
@@ -137,7 +136,7 @@ URL for `u/` and `sample-`; without it the route answers 404.
 ```sh
 docker run --rm -p 8000:8000 \
   -v /path/to/fonts:/data \
-  registry.digitalocean.com/artcraft/font-preview-service:latest
+  docker.io/storytold/font-preview-service:latest
 curl http://localhost:8000/readyz
 ```
 
@@ -189,13 +188,10 @@ for the same reason.
 
 | Workflow | Runs on | Does |
 | --- | --- | --- |
-| `docker-publish.yml` | push to `main`, `v*` tags, manual | Fetches fonts, builds both architectures, pushes the multi-arch image to DOCR and GHCR. |
+| `docker-publish.yml` | push to `main`, `v*` tags, manual | Fetches fonts, builds both architectures, pushes the multi-arch image to GHCR and Docker Hub. |
 | `sonar.yml` | push to `main`, same-repo pull requests | Runs the shared SonarCloud scan from [`storytold/craft-common-actions`](https://github.com/storytold/craft-common-actions). |
 
-Required repository secrets: `DIGITALOCEAN_TOKEN` (write access to the `artcraft`
-registry), `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (read-only, for pulling the
-Docker Hardened base images from `dhi.io` — these no longer publish anything),
-`SONAR_TOKEN`, plus the built-in `GITHUB_TOKEN` for the GHCR mirror.
+Required secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (for pulling Docker Hardened base images from `dhi.io` and pushing to Docker Hub), `SONAR_TOKEN` (or org-wide `SONAR_CLOUD_PAT`), plus the built-in `GITHUB_TOKEN` for GHCR.
 
 ## Not yet implemented
 
