@@ -26,6 +26,7 @@ jobs:
       images: |
         registry.digitalocean.com/artcraft/font-preview-service
         ghcr.io/storytold/font-preview-service
+        docker.io/storytold/font-preview-service
       # The runtime image is a Docker Hardened Image, which needs a Docker Hub login.
       dhi-login: true
       timeout-minutes: 60
